@@ -11,7 +11,7 @@ spring:
   ai:
     mcp:
       server:
-        name: mcp-server-example
+        name: pet-talk-mcp-server
         version: 0.0.1
         type: SYNC
         sse-endpoint: /sse

@@ -24,6 +24,11 @@ public interface PostTagRepository extends JpaRepository<PostTagRelation, Long> 
             "WHERE pt.post.postId IN :postIds")
     List<PostTagProjection> findTagNamesByPostIds(@Param("postIds") List<Long> postIds);
 
+    @Query("SELECT pt.post.postId " +
+            "FROM PostTagRelation pt " +
+            "WHERE pt.tag.tagName IN :tags")
+    List<Long> findPostIdsByTagNames(List<String> tags);
+
     // 게시물 태그를 위한 프로젝션 인터페이스
     interface PostTagProjection {
         Long getPostId();
