@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: pet-talk-mcp-server
+  profiles:
+    active: dev
