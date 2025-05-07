@@ -13,5 +13,5 @@ public interface TrainerTagRepository extends JpaRepository<TrainerTagRelation, 
     @Query("SELECT tt.trainer.trainerId " +
             "FROM TrainerTagRelation tt " +
             "WHERE tt.tag.tagName IN :tags")
-    List<Long> findTrainerIdsByTagNames(List<String> tags);
+    List<UUID> findTrainerIdsByTagNames(List<String> tags);
 }

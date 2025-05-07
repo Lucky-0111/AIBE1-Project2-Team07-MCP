@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -52,16 +53,51 @@ public class ChatServiceImpl implements ChatService {
     // 사용자의 질문과 관련된 내용이 태그에 있을 경우 해당 태그를 포함한 트레이너와 게시글을 검색합니다.
     @Tool(name = "getRelatedPosts", description = "사용자의 질문과 관련된 게시글을 검색합니다. 사용자가 질문한 내용과 관련된 태그를 기반으로 게시글을 찾습니다. 예: '강아지 훈련 방법에 대한 질문이 있어요', '고양이 행동 문제에 대한 조언을 받고 싶어요', '강아지 배변 훈련에 대한 팁을 알고 싶어요', '고양이 사료 추천해줘', '분리불안 해결 방법 알려줘', '공격성 제어 방법은?', '강아지 훈련사 추천해줘', '고양이 행동 문제 해결 방법 알려줘', '강아지 훈련 팁과 요령 공유해줘', '고양이 사료 브랜드 추천해줘'")
     public List<Long> getRelatedPosts(
-            @ToolParam(description = "사용자가 질문한 내용에 대한 태그. 예: '강아지 훈련', '고양이 행동 문제', '강아지 배변 훈련', '고양이 사료', '분리불안', '공격성 제어', '강아지 훈련사 추천', '고양이 행동 문제 해결', '강아지 훈련 팁과 요령', '고양이 사료 브랜드'")
+            @ToolParam(description = "사용자가 질문한 내용에 대한 태그 리스트. 범위가 클 경우 여러 개의 태그 입력. 예: '강아지 훈련', '고양이 행동 문제', '강아지 배변 훈련', '고양이 사료', '분리불안', '공격성 제어', '강아지 훈련사 추천', '고양이 행동 문제 해결', '강아지 훈련 팁과 요령', '고양이 사료 브랜드'")
             List<String> tags) {
-        return postTagRepository.findPostIdsByTagNames(tags);
+        log.info("getRelatedTrainers 호출됨: tags={}", tags);
+        // 쿼리 실행
+        List<Long> results = null;
+        try {
+            results = postTagRepository.findPostIdsByTagNames(tags);
+            log.debug("쿼리 실행 완료, 결과 처리 전: {}", results);
+        } catch (Exception e) {
+            log.error("쿼리 실행 중 오류: ", e);
+            return List.of();
+        }
+
+        if (results == null || results.isEmpty()) {
+            log.warn("검색 결과 없음: tags={}", tags);
+            return List.of(); // 빈 리스트 반환하여 NPE 방지
+        }
+
+        return results;
     }
 
-    @Tool(name = "getRelatedTrainers", description = "사용자의 질문과 관련된 트레이너를 검색합니다. 사용자가 질문한 내용과 관련된 태그를 기반으로 트레이너를 찾습니다. 예: '강아지 훈련 방법에 대한 질문이 있어요', '고양이 행동 문제에 대한 조언을 받고 싶어요', '강아지 배변 훈련에 대한 팁을 알고 싶어요', '고양이 사료 추천해줘', '분리불안 해결 방법 알려줘', '공격성 제어 방법은?', '강아지 훈련사 추천해줘', '고양이 행동 문제 해결 방법 알려줘', '강아지 훈련 팁과 요령 공유해줘', '고양이 사료 브랜드 추천해줘'")
-    public List<Long> getRelatedTrainers(
-            @ToolParam(description = "사용자가 질문한 내용에 대한 태그. 예: '강아지 훈련', '고양이 행동 문제', '강아지 배변 훈련', '고양이 사료', '분리불안', '공격성 제어', '강아지 훈련사 추천', '고양이 행동 문제 해결', '강아지 훈련 팁과 요령', '고양이 사료 브랜드'")
+    @Tool(name = "getRelatedTrainers", description = "사용자의 질문과 관련된 트레이너를 검색합니다. 사용자가 질문한 내용과 관련된 태그를 기반으로 트레이너를 찾습니다.  예: '강아지 훈련 방법에 대한 질문이 있어요', '고양이 행동 문제에 대한 조언을 받고 싶어요', '강아지 배변 훈련에 대한 팁을 알고 싶어요', '고양이 사료 추천해줘', '분리불안 해결 방법 알려줘', '공격성 제어 방법은?', '강아지 훈련사 추천해줘', '고양이 행동 문제 해결 방법 알려줘', '강아지 훈련 팁과 요령 공유해줘', '고양이 사료 브랜드 추천해줘'")
+    public List<UUID> getRelatedTrainers(
+            @ToolParam(description = "사용자가 질문한 내용에 대한 태그 리스트. 범위가 클 경우 여러 개의 태그 입력. 예: '강아지 훈련', '고양이 행동 문제', '강아지 배변 훈련', '고양이 사료', '분리불안', '공격성 제어', '강아지 훈련사 추천', '고양이 행동 문제 해결', '강아지 훈련 팁과 요령', '고양이 사료 브랜드'")
             List<String> tags) {
-        return trainerTagRepository.findTrainerIdsByTagNames(tags);
+        log.info("getRelatedTrainers 호출됨: tags={}", tags);
+
+        // 쿼리 실행
+        List<UUID> results = null;
+        try {
+            results = trainerTagRepository.findTrainerIdsByTagNames(tags);
+            log.debug("쿼리 실행 완료, 결과 처리 전: {}", results);
+        } catch (Exception e) {
+            log.error("쿼리 실행 중 오류: ", e);
+            return List.of();
+        }
+
+        if (results == null || results.isEmpty()) {
+            log.warn("검색 결과 없음: tags={}", tags);
+            return List.of(); // 빈 리스트 반환하여 NPE 방지
+        }
+
+        return results;
     }
 
+
+    
 }
