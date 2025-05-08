@@ -10,8 +10,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @RequiredArgsConstructor
 public class ToolCallbackProviderConfig {
+    //    private final TagService tagService;
     private final ChatService chatService;
-//    private final TagService tagService;
 
     @Bean
     public ToolCallbackProvider toolCallbackProvider() {

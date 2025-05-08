@@ -1,11 +1,15 @@
 package org.lucky0111.pettalkmcpserver.domain.entity.review;
 
+
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.lucky0111.pettalkmcpserver.domain.common.BaseTimeEntity;
 import org.lucky0111.pettalkmcpserver.domain.entity.match.UserApply;
+
+import javax.validation.constraints.Max;
+import javax.validation.constraints.Min;
 
 @Setter
 @Getter
@@ -25,6 +29,8 @@ public class Review extends BaseTimeEntity {
     private UserApply userApply;
 
     @Column(nullable = false)
+    @Min(1)
+    @Max(5)
     private Integer rating;
 
     private String reviewImageUrl;

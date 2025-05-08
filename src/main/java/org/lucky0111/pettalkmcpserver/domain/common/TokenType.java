@@ -5,9 +5,8 @@ import lombok.RequiredArgsConstructor;
 
 @Getter
 @RequiredArgsConstructor
-public enum PostCategory {
-    FREE,
-    QNA,
-    TOOL,
-    MYPET;
+public enum TokenType {
+    ACCESS("accessToken"),
+    REFRESH("refreshToken");
+    private final String name;
 }

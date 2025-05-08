@@ -5,9 +5,9 @@ import lombok.RequiredArgsConstructor;
 
 @Getter
 @RequiredArgsConstructor
-public enum PostCategory {
-    FREE,
-    QNA,
-    TOOL,
-    MYPET;
+public enum OAuth2Provider {
+    KAKAO("kakao"),
+    NAVER("naver");
+
+    private final String registrationId;
 }

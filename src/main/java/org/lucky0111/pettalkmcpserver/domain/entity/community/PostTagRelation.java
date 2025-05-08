@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.lucky0111.pettalkmcpserver.domain.entity.common.Tag;
 
+
 @Setter
 @Getter
 @Entity
