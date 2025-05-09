@@ -7,6 +7,7 @@ import org.lucky0111.pettalkmcpserver.domain.dto.trainer.TrainerDTO;
 import org.lucky0111.pettalkmcpserver.domain.entity.trainer.Trainer;
 import org.lucky0111.pettalkmcpserver.repository.common.TagRepository;
 import org.lucky0111.pettalkmcpserver.repository.trainer.TrainerRepository;
+import org.lucky0111.pettalkmcpserver.repository.user.PetUserRepository;
 import org.lucky0111.pettalkmcpserver.service.trainer.TrainerService;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -32,6 +33,7 @@ class TrainerResponseDTO {
 @Slf4j
 public class ChatServiceImpl implements ChatService {
 
+    private final PetUserRepository petUserRepository;
     private final TrainerRepository trainerRepository;
     private final TrainerService trainerService;
     private final int MAX_TRAINERS = 3; // 최대 반환할 훈련사 수를 상수로 정의
@@ -59,7 +61,7 @@ public class ChatServiceImpl implements ChatService {
             - {{자격증2}} ({{발급기관2}})
             - {{자격증3}} ({{발급기관3}})
             
-            ### 훈련사 프로필 페이지
+            ### 👇 문의하기
             [{{트레이너_이름}} 프로필 페이지](https://mass-jandy-lucky0111-ed8f3811.koyeb.app/trainers/profile/{{트레이너_닉네임}})
             ---
             """;
@@ -89,10 +91,9 @@ public class ChatServiceImpl implements ChatService {
     훈련사, 트레이너를 찾아달라는 요청이 있을 경우 이 도구를 사용하세요.
     
     사용자의 요청에 맞는 훈련사를 찾아주는 과정:
-    1. 사용자의 상황(반려동물 종류, 문제 행동 등)을 파악하여 적절한 태그 추출
-    2. 사용자의 지역을 고려하여 가까운 훈련사 추천 (상위 지역이 언급된 경우 모든 하위 지역을 자동으로 포함)
-    3. 각 훈련사의 전문성, 경력, 자격증을 기반으로 상황에 적합한 1-3명 추천 (항상 최대 3명만 반환)
-    4. 훈련사가 없는 경우 일반적인 조언과 다른 검색어 제안
+    1. 사용자의 상황(반려동물 종류, 문제 행동 등)을 파악하여 적절한 태그, 지역 추출 (**태그 또는 지역은 사용자가 언급한 것만 사용, 언급하지 않은 경우 입력받지 않아도 됨, 사용자에게 집요하게 요청 금지**)
+    2. 각 훈련사의 태그, 지역 기반으로 상황에 적합한 1-3명 추천 (항상 최대 3명만 반환, **태그 또는 지역이 없을 경우 해당 조건으로만 검색**)
+    3. 훈련사가 없는 경우 일반적인 조언과 다른 검색어 제안
     
     태그와 지역 검색 범위:
     - 태그는 넓은 범위(강아지 훈련, 고양이 훈련)부터 좁은 범위(분리불안, 배변훈련)까지 다양
@@ -113,11 +114,11 @@ public class ChatServiceImpl implements ChatService {
     - 훈련사 프로필 카드 출력 이전에 후속 질문 제안
     - 훈련사 프로필 카드는 사용자 요청에 대한 답변 이후에 출력
     - 훈련사를 찾은 경우(TrainerResponseDTO의 found가 true인 경우) "요청하신 훈련사 프로필 카드입니다."라는 문구로 시작
-    - 훈련사를 찾지 못한 경우(TrainerResponseDTO의 found가 false인 경우) "훈련사를 찾지 못했습니다."라는 문구로 시작 
+    - 훈련사를 찾지 못한 경우(TrainerResponseDTO의 found가 false인 경우) "훈련사를 찾지 못했습니다."라는 문구로 시작
     - **매우 중요: TrainerResponseDTO의 found가 false인 경우(trainers가 비어있는 경우) 절대로 훈련사 프로필 카드를 생성하지 마세요! 없는 데이터를 임의로 만들지 마세요! 대신 "죄송합니다. 요청하신 조건에 맞는 훈련사를 찾을 수 없습니다."라고 안내하세요.**
     - **매우 중요: 훈련사 정보는 오직 TrainerResponseDTO.trainers에 포함된 실제 데이터만 사용하세요. 임의로 정보를 생성하거나 바꾸지 마세요.**
     - TrainerResponseDTO의 trainers에 TrainerDTO가 존재하는 경우에만 해당 TrainerDTO의 정보로 훈련사 프로필 카드 출력
-    - 항목이 비어있는 경우 해당 항목은 출력하지 않음 (예시: - 자격증1 (발급기관1)\\n- None (None) 일 경우 - None (None)는 출력하지 않고 - 자격증1 (발급기관1) 만 출력, )
+    - 항목이 비어있는 경우 해당 항목은 출력하지 않음 (예시: None 일 경우 출력하지 않음)
     - 요청 지역과 실제 훈련사 활동 지역이 다를 경우, 이를 명확히 안내. 예: "요청하신 제주 지역에는 훈련사가 없지만, 서울에서 활동하는 훈련사를 찾았습니다."
     - 매우 중요: 훈련사 정보는 오직 TrainerResponseDTO.trainers에 포함된 실제 데이터만 사용하세요. 임의로 정보를 생성하거나 바꾸지 마세요. TrainerResponseDTO의 trainers에 TrainerDTO가 존재하는 경우에만 해당 TrainerDTO의 정보로 훈련사 프로필 카드를 출력하세요. TrainerResponseDTO의 trainers가 비어있는 경우 훈련사 프로필 카드를 생성하지 마세요. 대신 "죄송합니다. 요청하신 조건에 맞는 훈련사를 찾을 수 없습니다."라고 안내하세요.
     이 지침을 정확히 따라 사용자 요청 조건과 검색 결과를 명확하게 설명하세요.
@@ -191,24 +192,27 @@ public class ChatServiceImpl implements ChatService {
             Set<String> trainerNicknames = new HashSet<>();
             List<TrainerDTO> combinedTrainers = new ArrayList<>();
 
-            // 태그 기반 훈련사 처리 (최대 MAX_TRAINERS/2개)
+            // 태그 기반 훈련사 처리
             if (!tagTrainers.isEmpty()) {
                 for (Trainer trainer : tagTrainers) {
                     if (trainerNicknames.add(trainer.getUser().getNickname())) {
                         combinedTrainers.add(trainerService.getTrainerDetails(trainer.getUser().getNickname()));
-                        // 태그 기반 훈련사는 최대 MAX_TRAINERS/2개로 제한
-                        if (combinedTrainers.size() >= MAX_TRAINERS / 2 && !areaTrainers.isEmpty()) {
-                            break;
-                        }
-                        // 태그 기반 훈련사만 있는 경우 MAX_TRAINERS개 까지 추가
-                        if (combinedTrainers.size() >= MAX_TRAINERS && areaTrainers.isEmpty()) {
+                        // 전체 MAX_TRAINERS개 제한에 도달하면 중단
+                        if (combinedTrainers.size() >= MAX_TRAINERS) {
                             break;
                         }
                     }
                 }
             }
 
-            // 지역 기반 훈련사 처리 (남은 슬롯 채우기)
+            return combinedTrainers;
+        }
+
+        if (!areaTrainers.isEmpty()) {
+            Set<String> trainerNicknames = new HashSet<>();
+            List<TrainerDTO> combinedTrainers = new ArrayList<>();
+
+            // 지역 기반 훈련사 처리
             if (!areaTrainers.isEmpty()) {
                 for (Trainer trainer : areaTrainers) {
                     if (trainerNicknames.add(trainer.getUser().getNickname())) {
@@ -228,8 +232,34 @@ public class ChatServiceImpl implements ChatService {
         return new ArrayList<>(); // 비어있는 리스트 리턴
     }
 
-    // 필요에 따라 특정 훈련사의 상세 정보를 가져오는 메서드 추가
-    public TrainerDTO getTrainerDetailsByNickname(String nickname) {
+    @Tool(name = "getTrainerDetailsByName", description = """
+    훈련사 이름으로 훈련사 정보를 조회할 경우 이 도구를 사용하세요.
+    사용자의 요청에 맞는 훈련사 정보를 조회하는 과정:
+    1. 훈련사 이름을 기반으로 훈련사 정보를 조회
+    2. 훈련사 정보가 존재하는 경우 해당 정보를 반환
+    3. 훈련사 정보가 존재하지 않는 경우 "훈련사 정보를 찾을 수 없습니다."라는 메시지 반환
+    4. 훈련사 정보가 존재하는 경우 훈련사 프로필 카드 출력
+    
+    훈련사 프로필 카드 템플릿:
+    """ + trainerCardTemplate)
+    public TrainerDTO getTrainerDetailsByName(
+            @ToolParam (description = """
+            훈련사 이름을 입력하세요.
+            훈련사 이름은 사용자가 요청한 훈련사 이름입니다.
+            훈련사 이름만 출력합니다.
+            (예시: '홍길동 훈련사'일 경우 '홍길동' 만 입력, '강형욱 훈련사'일 경우 '강형욱' 만 입력)
+            """)
+            String name) {
+        // 입력값 로깅
+        log.info("Received trainer nickname: {}", name);
+
+        // 훈련사 정보 조회
+        String nickname = petUserRepository.findByName(name).getNickname();
+        if (nickname == null) {
+            log.warn("Trainer not found for nickname: {}", name);
+            return null; // 훈련사 정보가 없는 경우 null 반환
+        }
+
         return trainerService.getTrainerDetails(nickname);
     }
 }

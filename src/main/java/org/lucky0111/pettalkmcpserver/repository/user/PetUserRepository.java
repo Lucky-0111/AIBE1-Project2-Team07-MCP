@@ -13,6 +13,7 @@ public interface PetUserRepository extends JpaRepository<PetUser, UUID> {
     Optional<PetUser> findBySocialId(String socialId);
 
     PetUser findByProviderAndSocialId(String provider, String socialId);
+    PetUser findByName(String name);
 
     boolean existsByNickname(String nickname);
 
