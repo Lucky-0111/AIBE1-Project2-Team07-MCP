@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import org.lucky0111.pettalkmcpserver.domain.entity.common.Tag;
 
-
 @Getter
 @Entity
 @Table(name = "trainer_tags", uniqueConstraints = {

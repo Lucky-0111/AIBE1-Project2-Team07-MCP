@@ -6,6 +6,7 @@ import java.util.UUID;
 public record TrainerDTO(
         UUID trainerId, // Trainer의 ID는 UUID
 
+        String name,
         String nickname, // PetUser에서 가져옴
         String profileImageUrl, // PetUser에서 가져옴
         String email, // PetUser에서 가져옴
@@ -24,4 +25,4 @@ public record TrainerDTO(
         List<CertificationDTO> certifications, // Certification 목록
         double averageRating, // Review에서 계산
         long reviewCount // Review에서 계산
-) { }
+) {}

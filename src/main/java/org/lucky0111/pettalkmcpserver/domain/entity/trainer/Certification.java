@@ -1,5 +1,6 @@
 package org.lucky0111.pettalkmcpserver.domain.entity.trainer;
 
+
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

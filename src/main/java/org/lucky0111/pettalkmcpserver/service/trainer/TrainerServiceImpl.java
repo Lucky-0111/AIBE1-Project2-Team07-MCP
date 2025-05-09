@@ -1,50 +1,55 @@
 package org.lucky0111.pettalkmcpserver.service.trainer;
 
+
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.lucky0111.pettalkmcpserver.domain.dto.review.ReviewStatsDTO;
-import org.lucky0111.pettalkmcpserver.domain.dto.trainer.*;
+import org.lucky0111.pettalkmcpserver.domain.dto.trainer.CertificationDTO;
+import org.lucky0111.pettalkmcpserver.domain.dto.trainer.TrainerDTO;
+import org.lucky0111.pettalkmcpserver.domain.dto.trainer.TrainerPhotoDTO;
+import org.lucky0111.pettalkmcpserver.domain.dto.trainer.TrainerServiceFeeDTO;
+import org.lucky0111.pettalkmcpserver.domain.entity.common.Tag;
 import org.lucky0111.pettalkmcpserver.domain.entity.trainer.*;
 import org.lucky0111.pettalkmcpserver.domain.entity.user.PetUser;
 import org.lucky0111.pettalkmcpserver.exception.CustomException;
+import org.lucky0111.pettalkmcpserver.repository.common.TagRepository;
 import org.lucky0111.pettalkmcpserver.repository.review.ReviewRepository;
-import org.lucky0111.pettalkmcpserver.repository.trainer.CertificationRepository;
-import org.lucky0111.pettalkmcpserver.repository.trainer.TrainerRepository;
-import org.lucky0111.pettalkmcpserver.repository.trainer.TrainerTagRepository;
+import org.lucky0111.pettalkmcpserver.repository.trainer.*;
 import org.lucky0111.pettalkmcpserver.repository.user.PetUserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
+
 public class TrainerServiceImpl implements TrainerService {
 
     private final TrainerRepository trainerRepository;
     private final PetUserRepository petUserRepository;
     private final CertificationRepository certificationRepository;
     private final TrainerTagRepository trainerTagRepository;
+    private final TagRepository tagRepository;
     private final ReviewRepository reviewRepository;
+//    private final FileUploaderService fileUploaderService;
+    private final TrainerPhotoRepository trainerPhotoRepository;
+    private final TrainerServiceFeeRepository trainerServiceFeeRepository;
+
 
     @Override
+    @Transactional(readOnly = true)
     public TrainerDTO getTrainerDetails(String trainerNickname) {
         // 1. Trainer 엔티티 조회 (ID는 UUID)
         Trainer trainer = trainerRepository.findByUser_Nickname(trainerNickname)
                 .orElseThrow(() -> new CustomException("훈련사 정보를 찾을 수 없습니다 ID: %s".formatted(trainerNickname), HttpStatus.NOT_FOUND));
 
-        return buildTrainerDTO(trainer);
-    }
-
-    /**
-     * Trainer 엔티티를 TrainerDTO로 변환합니다.
-     */
-    private TrainerDTO buildTrainerDTO(Trainer trainer) {
         PetUser user = trainer.getUser();
 
-        List<TrainerPhoto> photos = trainer.getPhotos();
-        List<TrainerServiceFee> serviceFees = trainer.getServiceFees();
+        Set<TrainerPhoto> photos = trainer.getPhotos();
+        Set<TrainerServiceFee> serviceFees = trainer.getServiceFees();
 
         List<String> specializationNames = getSpecializationNames(trainer.getTrainerId());
         List<CertificationDTO> certificationDtoList = getCertificationDTOList(trainer.getTrainerId());
@@ -52,10 +57,13 @@ public class TrainerServiceImpl implements TrainerService {
         List<TrainerPhotoDTO> photoDTOs = getPhotosDTO(photos);
         List<TrainerServiceFeeDTO> serviceFeeDTOs = getServiceFeesDTO(serviceFees);
 
+
         ReviewStatsDTO reviewStatsDTO = getReviewStatsDTO(trainer.getTrainerId());
+
 
         return new TrainerDTO(
                 trainer.getTrainerId(), // UUID 타입
+                user != null ? user.getName() : null,
                 user != null ? user.getNickname() : null,
                 user != null ? user.getProfileImageUrl() : null,
                 user != null ? user.getEmail() : null, // email 필드 추가 (PetUser에 있다고 가정)
@@ -65,7 +73,7 @@ public class TrainerServiceImpl implements TrainerService {
                 trainer.getRepresentativeCareer(),
                 trainer.getSpecializationText(),
                 trainer.getVisitingAreas(),
-                trainer.getExperienceYears(),
+                trainer.getExperienceYears() != null ? trainer.getExperienceYears() : 0,
 
                 photoDTOs,
                 serviceFeeDTOs,
@@ -74,14 +82,85 @@ public class TrainerServiceImpl implements TrainerService {
                 certificationDtoList, // 자격증 DTO 목록
                 reviewStatsDTO.averageRating(),
                 reviewStatsDTO.reviewCount()
+
         );
     }
 
+    private Map<UUID, List<CertificationDTO>> getCertificationMapForTrainers(List<UUID> trainerIds) {
+        // 트레이너 ID 목록으로 자격증 조회
+        return certificationRepository.findAllByTrainer_TrainerIdIn(trainerIds).stream()
+                .collect(Collectors.groupingBy(
+                        certification -> certification.getTrainer().getTrainerId(),
+                        Collectors.mapping(CertificationDTO::fromEntity, Collectors.toList())
+                ));
+    }
+
+    private Map<UUID, List<String>> getSpecializationMapForTrainers(List<UUID> trainerIds) {
+        return trainerTagRepository.findAllByTrainer_TrainerIdIn(trainerIds).stream()
+                .collect(Collectors.groupingBy(
+                        relation -> relation.getTrainer().getTrainerId(),
+                        Collectors.mapping(
+                                relation -> relation.getTag().getTagName(),
+                                Collectors.toList()
+                        )
+                ));
+    }
+
+//    // 여러 트레이너의 리뷰 통계를 한 번에 조회
+//    private Map<UUID, ReviewStatsDTO> getReviewStatsMapForTrainers(List<UUID> trainerIds) {
+//        // 트레이너 ID 목록으로 평균 평점 조회
+//        Map<UUID, Double> avgRatings = reviewRepository.findAverageRatingsByTrainerIds(trainerIds);
+//
+//        // 트레이너 ID 목록으로 리뷰 개수 조회
+//        Map<UUID, Long> reviewCounts = reviewRepository.countReviewsByTrainerIds(trainerIds);
+//
+//        // 결과 맵 생성
+//        Map<UUID, ReviewStatsDTO> result = new HashMap<>();
+//        for (UUID trainerId : trainerIds) {
+//            Double avgRating = avgRatings.getOrDefault(trainerId, 0.0);
+//            Long reviewCount = reviewCounts.getOrDefault(trainerId, 0L);
+//            result.put(trainerId, new ReviewStatsDTO(avgRating, reviewCount));
+//        }
+//
+//        return result;
+//    }
+
+//    // TrainerDTO 변환 메서드 분리
+//    private TrainerDTO convertToTrainerDTO(
+//            Trainer trainer,
+//            List<TrainerPhotoDTO> photoDTOs,
+//            List<TrainerServiceFeeDTO> serviceFeeDTOs,
+//            List<String> specializationNames,
+//            List<CertificationDTO> certificationDtoList,
+//            ReviewStatsDTO reviewStatsDTO) {
+//
+//        PetUser user = trainer.getUser();
+//
+//        return new TrainerDTO(
+//                trainer.getTrainerId(),
+//                user != null ? user.getName() : null,
+//                user != null ? user.getNickname() : null,
+//                user != null ? user.getProfileImageUrl() : null,
+//                user != null ? user.getEmail() : null,
+//                trainer.getTitle(),
+//                trainer.getIntroduction(),
+//                trainer.getRepresentativeCareer(),
+//                trainer.getSpecializationText(),
+//                trainer.getVisitingAreas(),
+//                trainer.getExperienceYears() != null ? trainer.getExperienceYears() : 0,
+//                photoDTOs,
+//                serviceFeeDTOs,
+//                specializationNames,
+//                certificationDtoList,
+//                reviewStatsDTO.averageRating(),
+//                reviewStatsDTO.reviewCount()
+//        );
+//    }
     private List<CertificationDTO> getCertificationDTOList(UUID trainerId){
         List<Certification> certifications = certificationRepository.findByTrainer_TrainerId(trainerId);
 
         return certifications.stream()
-                .map(CertificationDTO::fromEntity) // Certification 엔티티 -> CertificationDto Record 변환 (CertificationDto에 fromEntity 메소드 구현 필요)
+                .map(CertificationDTO::fromEntity)
                 .toList();
     }
 
@@ -90,7 +169,7 @@ public class TrainerServiceImpl implements TrainerService {
         List<TrainerTagRelation> trainerTags = trainerTagRepository.findByTrainer_TrainerId(trainerId);
         return trainerTags.stream()
                 .map(TrainerTagRelation::getTag) // TrainerTag 엔티티에서 Tag 엔티티를 가져옴 (관계 매핑 필요)
-                .map(tag -> tag.getTagName()) // Tag 엔티티에서 태그 이름을 가져옴
+                .map(Tag::getTagName) // Tag 엔티티에서 태그 이름을 가져옴
                 .toList();
     }
     // 5. 평점 및 후기 개수 조회 (ReviewRepository 사용, 인자 타입 UUID)
@@ -104,10 +183,11 @@ public class TrainerServiceImpl implements TrainerService {
         );
     }
 
-    private List<TrainerPhotoDTO> getPhotosDTO(List<TrainerPhoto> photos){
-        if(photos == null || photos.isEmpty()){
-            return null;
+    private List<TrainerPhotoDTO> getPhotosDTO(Set<TrainerPhoto> photos) {
+        if (photos == null || photos.isEmpty()) {
+            return Collections.emptyList();
         }
+
         return photos.stream()
                 .map(photo -> new TrainerPhotoDTO(
                         photo.getFileUrl(),
@@ -116,10 +196,11 @@ public class TrainerServiceImpl implements TrainerService {
                 .collect(Collectors.toList());
     }
 
-    private List<TrainerServiceFeeDTO> getServiceFeesDTO(List<TrainerServiceFee> serviceFees){
-        if(serviceFees == null || serviceFees.isEmpty()){
-            return null;
+    private List<TrainerServiceFeeDTO> getServiceFeesDTO(Set<TrainerServiceFee> serviceFees) {
+        if (serviceFees == null || serviceFees.isEmpty()) {
+            return Collections.emptyList();
         }
+
         return serviceFees.stream()
                 .map(fee -> new TrainerServiceFeeDTO(
                         fee.getServiceType().name(),
