@@ -1,31 +1,51 @@
 package org.lucky0111.pettalkmcpserver.service;
 
+import jakarta.persistence.*;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lucky0111.pettalkmcpserver.domain.dto.trainer.TrainerDTO;
+import org.lucky0111.pettalkmcpserver.domain.entity.common.Tag;
+import org.lucky0111.pettalkmcpserver.domain.entity.community.Post;
 import org.lucky0111.pettalkmcpserver.domain.entity.trainer.Trainer;
+import org.lucky0111.pettalkmcpserver.domain.entity.user.PetUser;
+import org.lucky0111.pettalkmcpserver.exception.CustomException;
 import org.lucky0111.pettalkmcpserver.repository.common.TagRepository;
+import org.lucky0111.pettalkmcpserver.repository.community.PostRepository;
 import org.lucky0111.pettalkmcpserver.repository.trainer.TrainerRepository;
 import org.lucky0111.pettalkmcpserver.repository.user.PetUserRepository;
 import org.lucky0111.pettalkmcpserver.service.trainer.TrainerService;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 // TrainerResponseDTO 클래스 추가
 @Data
-class TrainerResponseDTO {
-    private List<TrainerDTO> trainers;
+class ChatTrainerResponseDTO {
+    private Map<TrainerDTO, String> trainerSearchTypes; // 각 TrainerDTO와 검색 유형을 직접 연결
     private boolean found;
 
-    public TrainerResponseDTO(List<TrainerDTO> trainers) {
-        this.trainers = trainers;
-        this.found = !trainers.isEmpty();
+    public ChatTrainerResponseDTO(Map<TrainerDTO, String> trainerSearchTypes) {
+        this.trainerSearchTypes = trainerSearchTypes;
+        this.found = !trainerSearchTypes.isEmpty();
     }
+
+    // 필요한 경우 trainers 리스트를 반환하는 메서드 추가
+    public List<TrainerDTO> getTrainers() {
+        return new ArrayList<>(trainerSearchTypes.keySet());
+    }
+}
+
+@Data
+class ChatPostDTO {
+    private Long postId;
+    private String title;
+    private String content;
 }
 
 @Service
@@ -33,10 +53,24 @@ class TrainerResponseDTO {
 @Slf4j
 public class ChatServiceImpl implements ChatService {
 
+    private final PostRepository postRepository;
     private final PetUserRepository petUserRepository;
     private final TrainerRepository trainerRepository;
     private final TrainerService trainerService;
-    private final int MAX_TRAINERS = 3; // 최대 반환할 훈련사 수를 상수로 정의
+    private final int MAX_TRAINERS = 4; // 최대 반환할 훈련사 수를 상수로 정의
+    private final int MAX_POSTS = 4; // 최대 반환할 게시글 수를 상수로 정의
+
+    // 게시글 카드 템플릿
+    private final String postCardTemplate = """
+        ---
+        
+        ## 📄 {{게시글_제목}}
+        
+        {{게시글_내용_요약}}
+        
+        [게시글 보러가기](https://mass-jandy-lucky0111-ed8f3811.koyeb.app/community/post/{{게시글_ID}})
+        ---
+        """;
 
     private final String trainerCardTemplate = """
             ---
@@ -87,13 +121,15 @@ public class ChatServiceImpl implements ChatService {
        - 제주 → 제주시, 서귀포시
     """;
 
+
     @Tool(name = "getTrainerInfo", description = """
     훈련사, 트레이너를 찾아달라는 요청이 있을 경우 이 도구를 사용하세요.
     
     사용자의 요청에 맞는 훈련사를 찾아주는 과정:
-    1. 사용자의 상황(반려동물 종류, 문제 행동 등)을 파악하여 적절한 태그, 지역 추출 (**태그 또는 지역은 사용자가 언급한 것만 사용, 언급하지 않은 경우 입력받지 않아도 됨, 사용자에게 집요하게 요청 금지**)
-    2. 각 훈련사의 태그, 지역 기반으로 상황에 적합한 1-3명 추천 (항상 최대 3명만 반환, **태그 또는 지역이 없을 경우 해당 조건으로만 검색**)
-    3. 훈련사가 없는 경우 일반적인 조언과 다른 검색어 제안
+    1. **DB에 저장된 태그 목록, 훈련사 지역 목록을 요청합니다.**
+    2. 사용자의 상황(반려동물 종류, 문제 행동 등)을 파악하여 적절한 태그, 지역 추출 (**태그 또는 지역은 사용자가 언급한 것만 사용, 언급하지 않은 경우 입력받지 않아도 됨, 사용자에게 집요하게 요청 금지**)
+    3. 각 훈련사의 태그, 지역 기반으로 상황에 적합한 1-4명 추천 (항상 최대 4명만 반환, **태그 또는 지역이 없을 경우 해당 조건으로만 검색**)
+    4. 훈련사가 없는 경우 일반적인 조언과 다른 검색어 제안
     
     태그와 지역 검색 범위:
     - 태그는 넓은 범위(강아지 훈련, 고양이 훈련)부터 좁은 범위(분리불안, 배변훈련)까지 다양
@@ -110,24 +146,48 @@ public class ChatServiceImpl implements ChatService {
     - 간단한 상황별 조언 제공
     
     응답 형식:
-    - 훈련사 프로필 카드는 마크다운 형식으로 표시
+    - 훈련사 프로필 카드는 마크다운 형식으로 표시 (코드블록 금지, 마크다운으로만 출력)
     - 훈련사 프로필 카드 출력 이전에 후속 질문 제안
     - 훈련사 프로필 카드는 사용자 요청에 대한 답변 이후에 출력
-    - 훈련사를 찾은 경우(TrainerResponseDTO의 found가 true인 경우) "요청하신 훈련사 프로필 카드입니다."라는 문구로 시작
+    - TrainerResponseDTO에는 Map<TrainerDTO, String> 형태의 trainerSearchTypes가 있으며, 각 TrainerDTO와 해당 검색 유형("tag", "area", "both" 중 하나)이 연결되어 있습니다.
+    - 각 TrainerDTO의 검색 유형을 확인하여 적절한 설명을 제공하십시오:
+      - "both": 태그와 지역 모두 일치하는 훈련사
+      - "tag": 태그만 일치하는 훈련사
+      - "area": 지역만 일치하는 훈련사
+    훈련사 검색 방식에 따라 분류하여 훈련사 프로필 카드를 출력합니다.
+      - searchType이 "both"인 경우: "태그와 지역에 맞는 훈련사:"
+      - searchType이 "tag"인 경우: "태그에 맞는 훈련사:"
+      - searchType이 "area"인 경우: "지역에 맞는 훈련사:"
+      - 예시: "
+              # 태그와 지역에 맞는 훈련사:\\n
+              {훈련사1 프로필 카드}\\n
+              {훈련사2 프로필 카드}\\n
+              # 태그에 맞는 훈련사:\\n
+              {훈련사3 프로필 카드}\\n
+              {훈련사4 프로필 카드}\\n
+              # 지역에 맞는 훈련사:\\n
+              {훈련사5 프로필 카드}\\n
+              {훈련사6 프로필 카드}\\n
+            "
+      - 훈련사 프로필 카드 출력 시 태그와 지역에 맞는 훈련사, 태그에 맞는 훈련사, 지역에 맞는 훈련사 순서로 출력
+    - 훈련사를 찾은 경우(TrainerResponseDTO의 found가 true인 경우) "훈련사를 찾았습니다."라는 문구로 시작
     - 훈련사를 찾지 못한 경우(TrainerResponseDTO의 found가 false인 경우) "훈련사를 찾지 못했습니다."라는 문구로 시작
     - **매우 중요: TrainerResponseDTO의 found가 false인 경우(trainers가 비어있는 경우) 절대로 훈련사 프로필 카드를 생성하지 마세요! 없는 데이터를 임의로 만들지 마세요! 대신 "죄송합니다. 요청하신 조건에 맞는 훈련사를 찾을 수 없습니다."라고 안내하세요.**
     - **매우 중요: 훈련사 정보는 오직 TrainerResponseDTO.trainers에 포함된 실제 데이터만 사용하세요. 임의로 정보를 생성하거나 바꾸지 마세요.**
     - TrainerResponseDTO의 trainers에 TrainerDTO가 존재하는 경우에만 해당 TrainerDTO의 정보로 훈련사 프로필 카드 출력
     - 항목이 비어있는 경우 해당 항목은 출력하지 않음 (예시: None 일 경우 출력하지 않음)
-    - 요청 지역과 실제 훈련사 활동 지역이 다를 경우, 이를 명확히 안내. 예: "요청하신 제주 지역에는 훈련사가 없지만, 서울에서 활동하는 훈련사를 찾았습니다."
     - 매우 중요: 훈련사 정보는 오직 TrainerResponseDTO.trainers에 포함된 실제 데이터만 사용하세요. 임의로 정보를 생성하거나 바꾸지 마세요. TrainerResponseDTO의 trainers에 TrainerDTO가 존재하는 경우에만 해당 TrainerDTO의 정보로 훈련사 프로필 카드를 출력하세요. TrainerResponseDTO의 trainers가 비어있는 경우 훈련사 프로필 카드를 생성하지 마세요. 대신 "죄송합니다. 요청하신 조건에 맞는 훈련사를 찾을 수 없습니다."라고 안내하세요.
     이 지침을 정확히 따라 사용자 요청 조건과 검색 결과를 명확하게 설명하세요.
     
     훈련사 프로필 카드 템플릿:
     """ + trainerCardTemplate)
-    public TrainerResponseDTO getTrainerInfo(
+    public ChatTrainerResponseDTO getTrainerInfo(
             @ToolParam(description = """
            사용자 요청에서 추출한 태그 목록입니다. 다음과 같은 내용을 태그로 추출하세요:
+           
+           태그 추출 순서:
+           1. **DB에 저장된 태그 목록을 요청합니다.**
+           2. DB에 있는 태그 목록을 기반으로 사용자가 제공한 정보에 맞는 태그를 추출합니다.
            
            1. 반려동물 종류: 강아지, 고양이 등
            2. 문제 행동: 분리불안, 짖음, 공격성, 배변문제 등
@@ -145,6 +205,10 @@ public class ChatServiceImpl implements ChatService {
             @ToolParam(description = """
            사용자 요청에서 추출한 지역 목록입니다. 다음과 같은 지역 정보를 추출하세요:
            
+           지역 추출 순서:
+           1. **DB에 저장된 훈련사 지역 목록을 요청합니다.**
+           2. DB에 있는 훈련사 지역 목록을 기반으로 사용자가 제공한 정보에 맞는 지역를 추출합니다.
+           
            지역은 다양한 범위로 추출할 수 있습니다:
            - 넓은 범위: 서울, 경기, 부산 (광역시, 특별시, 도)
            - 좁은 범위: 강남, 용산, 용인, 수원, 성남 (시, 구)
@@ -153,9 +217,13 @@ public class ChatServiceImpl implements ChatService {
            예시:
            - 사용자가 "서울"만 언급했다면: areas = ["서울", "강남", "강동", "강북", "강서", "관악", "광진", "구로", "금천", "노원", "도봉", "동대문", "동작", "마포", "서대문", "서초", "성동", "성북", "송파", "양천", "영등포", "용산", "은평", "종로", "중구", "중랑"]
            - 사용자가 "경기"만 언급했다면: areas = ["경기", "수원", "성남", "용인", "부천", "안산", "안양", "평택", "시흥", "김포", "광주", "광명", "군포", "하남", "오산", "이천", "안성", "의왕", "양평", "여주", "과천", "고양", "의정부", "동두천", "구리", "남양주", "파주", "양주", "포천", "연천", "가평"]
-           - 사용자가 "수도권"만 언급했다면: areas = ["수도권", "서울", "경기", "인천", "강남", "강동", ... 모든 하위 지역 포함]
+           - 사용자가 "수도권"만 언급했다면: areas = ["수도권", "서울", "경기", "인천", "강남", "강동", ... DB에 있는 모든 하위 지역 포함]
 
            프로그램에서 따로 지역 확장을 하지 않으므로, 여기서 상위 지역에 대한 모든 하위 지역을 직접 포함시켜야 합니다.
+           
+           여기서 DB에 저장된 지역만 추출합니다. (예시: DB(["경기", "동탄", "광진, 성동, 잠실, 강남", "서울", "남양주, 동두천, 의정부", "성남", "해운대", "부산", "분당"] 이고 요청이 "경기 지역 훈련사 찾아주세요"일 경우 ["경기", "동탄", "남양주", "동두천", "의정부", "성남", "분당"] 만 포함))
+           
+           지역 계층 구조는 큰 틀의 예시이며 모든 하위 지역을 포함하지 않는 참고용 예시입니다. 그러므로 동탄, 분당 같은 변수가 있을 수 있습니다.
            
            지역 계층 구조:
            """ + regionHierarchyToString)
@@ -165,72 +233,103 @@ public class ChatServiceImpl implements ChatService {
         log.info("Received tags: {}", tags);
         log.info("Received areas: {}", areas);
 
-        List<TrainerDTO> trainerDTOs = getTrainersByTagsAndAreas(tags, areas);
+        // 훈련사 검색 및 검색 유형 정보 가져오기
+        Map<TrainerDTO, String> trainerSearchTypes = getTrainersByTagsAndAreas(tags, areas);
 
-        // 최대 MAX_TRAINERS(3)개만 반환
-        if (trainerDTOs.size() > MAX_TRAINERS) {
-            trainerDTOs = trainerDTOs.subList(0, MAX_TRAINERS);
+        log.info("Trainer search types: {}", trainerSearchTypes);
+
+        // 최대 MAX_TRAINERS(4)개로 제한
+        if (trainerSearchTypes.size() > MAX_TRAINERS) {
+            Map<TrainerDTO, String> limitedTrainerSearchTypes = new HashMap<>();
+            int count = 0;
+
+            for (Map.Entry<TrainerDTO, String> entry : trainerSearchTypes.entrySet()) {
+                limitedTrainerSearchTypes.put(entry.getKey(), entry.getValue());
+                count++;
+
+                if (count >= MAX_TRAINERS) {
+                    break;
+                }
+            }
+
+            trainerSearchTypes = limitedTrainerSearchTypes;
         }
 
         // 명시적인 결과 객체 반환
-        return new TrainerResponseDTO(trainerDTOs);
+        return new ChatTrainerResponseDTO(trainerSearchTypes);
     }
 
-    private List<TrainerDTO> getTrainersByTagsAndAreas(List<String> tags, List<String> areas) {
-        // 1. tags와 areas 모두 충족하는 훈련사가 있는 경우, 해당 훈련사 목록 리턴
-        List<Trainer> trainers = trainerRepository.findAllByTagsAndAreas(tags, areas);
-        if (!trainers.isEmpty()) {
-            return trainers.stream()
-                    .map(trainer -> trainerService.getTrainerDetails(trainer.getUser().getNickname()))
-                    .collect(Collectors.toList());
-        }
+    private Map<TrainerDTO, String> getTrainersByTagsAndAreas(List<String> tags, List<String> areas) {
+        Map<TrainerDTO, String> trainerSearchTypes = new HashMap<>(); // 각 TrainerDTO와 검색 유형 연결
 
-        // 2. tags, areas를 각각 충족하는 훈련사 찾으면 tags, areas를 각각 충족하는 훈련사 리턴
-        List<Trainer> tagTrainers = trainerRepository.findAllByTags(tags);
-        List<Trainer> areaTrainers = trainerRepository.findAllByAreas(areas);
-        if (!tagTrainers.isEmpty() || !areaTrainers.isEmpty()) {
-            Set<String> trainerNicknames = new HashSet<>();
-            List<TrainerDTO> combinedTrainers = new ArrayList<>();
+        // 중복 방지를 위한 Set
+        Set<String> addedTrainerNicknames = new HashSet<>();
 
-            // 태그 기반 훈련사 처리
-            if (!tagTrainers.isEmpty()) {
-                for (Trainer trainer : tagTrainers) {
-                    if (trainerNicknames.add(trainer.getUser().getNickname())) {
-                        combinedTrainers.add(trainerService.getTrainerDetails(trainer.getUser().getNickname()));
-                        // 전체 MAX_TRAINERS개 제한에 도달하면 중단
-                        if (combinedTrainers.size() >= MAX_TRAINERS) {
+        // 1. tags와 areas 모두 충족하는 훈련사가 있는 경우
+        if(!tags.isEmpty() && !areas.isEmpty()) {
+            List<Trainer> trainers = trainerRepository.findAllByTagsAndAreas(tags, areas);
+            if (!trainers.isEmpty()) {
+                for (Trainer trainer : trainers) {
+                    String nickname = trainer.getUser().getNickname();
+                    if (addedTrainerNicknames.add(nickname)) {
+                        TrainerDTO trainerDTO = trainerService.getTrainerDetails(nickname);
+                        trainerSearchTypes.put(trainerDTO, "both"); // 각 TrainerDTO와 검색 유형 연결
+
+                        log.info("Found both trainer: {}", trainerDTO);
+                        if (trainerSearchTypes.size() >= MAX_TRAINERS) {
                             break;
                         }
                     }
                 }
             }
-
-            return combinedTrainers;
         }
 
-        if (!areaTrainers.isEmpty()) {
-            Set<String> trainerNicknames = new HashSet<>();
-            List<TrainerDTO> combinedTrainers = new ArrayList<>();
+        // 2. 태그 기반 훈련사 처리 (아직 MAX_TRAINERS에 도달하지 않은 경우)
+        int tagCount = 0;
+        if (!tags.isEmpty() && trainerSearchTypes.size() < MAX_TRAINERS) {
+            List<Trainer> tagTrainers = trainerRepository.findAllByTags(tags);
+            for (Trainer trainer : tagTrainers) {
+                String nickname = trainer.getUser().getNickname();
+                // 중복 체크
+                if (addedTrainerNicknames.add(nickname)) {
+                    TrainerDTO trainerDTO = trainerService.getTrainerDetails(nickname);
+                    trainerSearchTypes.put(trainerDTO, "tag"); // 각 TrainerDTO와 검색 유형 연결
 
-            // 지역 기반 훈련사 처리
-            if (!areaTrainers.isEmpty()) {
-                for (Trainer trainer : areaTrainers) {
-                    if (trainerNicknames.add(trainer.getUser().getNickname())) {
-                        combinedTrainers.add(trainerService.getTrainerDetails(trainer.getUser().getNickname()));
-                        // 전체 MAX_TRAINERS개 제한에 도달하면 중단
-                        if (combinedTrainers.size() >= MAX_TRAINERS) {
-                            break;
-                        }
+                    log.info("Found tag trainer: {}", trainerDTO);
+                    tagCount++;
+                    if (trainerSearchTypes.size() >= MAX_TRAINERS / 2) {
+                        break;
                     }
                 }
             }
-
-            return combinedTrainers;
         }
 
-        // 3. tags와 areas 모두 충족하는 훈련사, tags, areas를 각각 충족하는 훈련사 모두 없는 경우 비어있는 List<TrainerDTO> 리턴
-        return new ArrayList<>(); // 비어있는 리스트 리턴
+        // 3. 지역 기반 훈련사 처리
+        int areaCount = 0;
+        if (tagCount <= 1) {
+            tagCount = MAX_TRAINERS - trainerSearchTypes.size();
+        }
+        if (!areas.isEmpty()) {
+            List<Trainer> areaTrainers = trainerRepository.findAllByAreas(areas);
+            for (Trainer trainer : areaTrainers) {
+                String nickname = trainer.getUser().getNickname();
+                // 중복 체크
+                if (addedTrainerNicknames.add(nickname)) {
+                    TrainerDTO trainerDTO = trainerService.getTrainerDetails(nickname);
+                    trainerSearchTypes.put(trainerDTO, "area"); // 각 TrainerDTO와 검색 유형 연결
+
+                    log.info("Found area trainer: {}", trainerDTO);
+                    areaCount++;
+                    if (areaCount >= tagCount) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        return trainerSearchTypes;
     }
+
 
     @Tool(name = "getTrainerDetailsByName", description = """
     훈련사 이름으로 훈련사 정보를 조회할 경우 이 도구를 사용하세요.
@@ -261,5 +360,150 @@ public class ChatServiceImpl implements ChatService {
         }
 
         return trainerService.getTrainerDetails(nickname);
+    }
+
+    @Tool(name = "getTrainerAreas", description = """
+    이 도구는 DB에 저장된 모든 훈련사 지역 정보 목록을 가져옵니다.
+    **DB에 저장된 훈련사 지역 목록을 요청할 경우 이 도구를 사용하세요.**
+    
+    ### 사용 예시
+    - "사용자 요청에서 지역 정보를 추출하기 위해 DB에 있는 훈련사 지역 목록을 가져와주세요"
+    - "사용자가 언급한 지역이 훈련사 데이터베이스에 있는지 확인하고 싶습니다"
+    
+    ### 용도
+    - 사용자 쿼리에서 지역 정보 추출 시 참조 목록으로 활용
+    - 지역명 표준화 및 일관성 유지
+    - 지역 기반 훈련사 검색 시 사용될 올바른 지역명 확인
+    
+    ### 반환 데이터
+    - List<String> 형태의 모든 훈련사 지역 정보 목록을 반환합니다
+    - 각 문자열은 DB에 저장된 정확한 지역 정보입니다
+    - 각 훈련사마다 방문 가능 지역 정보가 포함됩니다
+    
+    ### 사용 방법
+    1. 사용자의 질문이나 요청에서 지역 관련 정보를 파악하세요
+    2. 이 도구를 호출하여 DB에 있는 훈련사 지역 목록을 확인하세요
+    3. 사용자 요청의 지역 정보와 DB의 지역 정보를 비교하여 일치하는 지역을 선택하세요
+    4. 선택된 지역 정보를 기반으로 훈련사 검색 또는 게시글 검색 또는 다른 작업을 수행하세요
+    
+    ### 지역 선택 규칙
+    - 사용자가 언급한 지역과 가장 일치하는 지역을 선택하세요
+    - 대도시나 행정구역 단위(서울, 경기 등)와 하위 지역(강남구, 분당구 등)을 모두 고려하세요
+    - 사용자가 언급한 지역이 DB에 없는 경우, 가장 가까운 상위 지역을 선택하세요
+    
+    ### 응답 활용
+    - 이 도구의 결과는 훈련사 검색 시 지역 기반 필터링에 활용할 수 있습니다
+    - 사용자에게 특정 지역의 훈련사 정보를 제공할 때 정확한 지역명 참조에 사용하세요
+    """)
+    public List<String> getTrainerAreas() {
+        // DB에 저장된 훈련사 지역 정보 목록을 가져오는 로직
+        List<Trainer> trainers = trainerRepository.findAll();
+
+        List<String> trainerAreas = trainers.stream()
+                .map(Trainer::getVisitingAreas)
+                .collect(Collectors.toList());
+
+        log.info("Trainer areas: {}", trainerAreas);
+
+        return trainerAreas;
+    }
+
+
+    @Tool(name = "getPostInfo", description = """
+    이 도구는 사용자의 요청에 따라 반려동물 관련 게시글을 검색합니다.
+    게시글 검색 요청이 있을 경우 이 도구를 사용하세요.
+    
+    ### 사용 예시
+    - "분리불안에 대한 게시글 찾아줘"
+    - "배변훈련 관련 사례 찾아줘"
+    - "강아지 훈련 경험담 보여줘"
+    
+    ### 검색 과정
+    1. **DB에 저장된 태그 목록을 요청합니다.**
+    2. 사용자의 질문이나 요청에서 키워드를 추출하세요.
+    3. 추출한 키워드를 기반으로 관련 게시글을 검색합니다.
+    4. 검색 결과를 사용자에게 제공합니다.
+    
+    ### 검색 범위
+    - 태그: 반려동물 종류, 문제 행동, 훈련 방법 등
+    - 키워드: 게시글 제목이나 내용에 포함된 관련 단어
+    
+    ### 반환 데이터
+    - List<PostDTO> 형태의 게시글 목록을 반환합니다.
+    - 각 PostDTO에는 다음 정보가 포함됩니다:
+     - postId: 게시글 ID
+     - title: 게시글 제목
+     - content: 게시글 내용
+    
+    ### 커뮤니케이션 스타일
+    - 게시글 정보를 요약하여 명확하게 전달
+    - 핵심 내용을 강조하여 사용자가 쉽게 이해할 수 있도록 함
+    - 원본 게시글 링크 제공으로 상세 내용 확인 유도
+    
+    ### 응답 형식
+    - 게시글 요약은 마크다운 형식으로 표시 (코드블록 금지, 마크다운으로만 출력)
+    - 게시글이 있는 경우 "요청하신 키워드에 관한 게시글을 찾았습니다."라는 문구로 시작
+    - 게시글이 없는 경우 "요청하신 키워드에 관한 게시글을 찾을 수 없습니다."라는 문구로 시작
+    - 게시글 목록이 비어있는 경우 게시글 정보를 임의로 생성하지 마세요
+    - 각 게시글은 게시글 템플릿에 따라 표시됩니다
+    - 검색된 모든 게시글을 마크다운 형식으로 출력합니다
+    
+    이 지침을 정확히 따라 사용자 요청 조건과 검색 결과를 명확하게 설명하세요.
+    
+    게시글 템플릿:
+    """ + postCardTemplate)
+    public List<ChatPostDTO> getPostInfo(
+            @ToolParam(description = """
+           사용자 요청에서 추출한 태그 목록입니다. 다음과 같은 내용을 태그로 추출하세요:
+           
+           태그 추출 순서:
+           1. **DB에 저장된 태그 목록을 요청합니다.**
+           2. DB에 있는 태그 목록을 기반으로 사용자가 제공한 정보에 맞는 태그를 추출합니다.
+           
+           태그 예시:
+           1. 반려동물 종류: 강아지, 고양이 등
+           2. 문제 행동: 분리불안, 짖음, 공격성, 배변문제 등
+           3. 훈련 방법: 기본훈련, 행동교정, 클리커 등
+           4. 경험담: 성공사례, 실패사례, 경험, 후기 등
+           
+           중요한 태그만 추출하고, 불필요한 단어는 포함하지 마세요.
+           """)
+            List<String> tags
+    ) {
+        // 입력값 로깅
+        log.info("Received tags: {}", tags);
+
+        // 게시글 검색 로직
+        List<Post> posts = postRepository.findByTags(tags);
+
+        // posts가 비어있는 경우 처리
+        if (posts.isEmpty()) {
+            log.warn("No posts found for tags: {}", tags);
+            return Collections.emptyList(); // 게시글이 없는 경우 빈 리스트 반환
+        }
+
+        // MAX_POSTS 개로 제한
+        if (posts.size() > MAX_POSTS) {
+            posts = posts.subList(0, MAX_POSTS);
+        }
+
+        // 검색 결과를 DTO로 변환
+        List<ChatPostDTO> postDTOs = posts.stream()
+                .map(this::convertToPostDTO)
+                .collect(Collectors.toList());
+
+        log.info("Found {} posts", postDTOs);
+
+        return postDTOs;
+    }
+
+    // Post 엔티티를 PostDTO로 변환하는 메서드
+    private ChatPostDTO convertToPostDTO(Post post) {
+        ChatPostDTO dto = new ChatPostDTO();
+        dto.setPostId(post.getPostId());
+        dto.setTitle(post.getTitle());
+        dto.setContent(post.getContent());
+
+        return dto;
     }
 }

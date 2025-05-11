@@ -8,6 +8,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.UUID;
 
 public interface TrainerService {
+
     TrainerDTO getTrainerDetails(String trainerNickname);
 
 }
