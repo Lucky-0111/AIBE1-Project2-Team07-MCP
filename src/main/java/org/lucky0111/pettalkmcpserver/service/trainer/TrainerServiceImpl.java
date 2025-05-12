@@ -46,8 +46,6 @@ public class TrainerServiceImpl implements TrainerService {
         Trainer trainer = trainerRepository.findByUser_Nickname(trainerNickname)
                 .orElseThrow(() -> new CustomException("훈련사 정보를 찾을 수 없습니다 ID: %s".formatted(trainerNickname), HttpStatus.NOT_FOUND));
 
-        PetUser user = trainer.getUser();
-
         Set<TrainerPhoto> photos = trainer.getPhotos();
         Set<TrainerServiceFee> serviceFees = trainer.getServiceFees();
 
@@ -60,29 +58,43 @@ public class TrainerServiceImpl implements TrainerService {
 
         ReviewStatsDTO reviewStatsDTO = getReviewStatsDTO(trainer.getTrainerId());
 
+        return convertToTrainerDTO(
+                trainer,
+                photoDTOs,
+                serviceFeeDTOs,
+                specializationNames,
+                certificationDtoList,
+                reviewStatsDTO
+        );
+    }
+
+    private TrainerDTO convertToTrainerDTO(
+            Trainer trainer,
+            List<TrainerPhotoDTO> photoDTOs,
+            List<TrainerServiceFeeDTO> serviceFeeDTOs,
+            List<String> specializationNames,
+            List<CertificationDTO> certificationDtoList,
+            ReviewStatsDTO reviewStatsDTO) {
+
+        PetUser user = trainer.getUser();
 
         return new TrainerDTO(
-                trainer.getTrainerId(), // UUID 타입
+                trainer.getTrainerId(),
                 user != null ? user.getName() : null,
                 user != null ? user.getNickname() : null,
                 user != null ? user.getProfileImageUrl() : null,
-                user != null ? user.getEmail() : null, // email 필드 추가 (PetUser에 있다고 가정)
-
+                user != null ? user.getEmail() : null,
                 trainer.getTitle(),
                 trainer.getIntroduction(),
                 trainer.getRepresentativeCareer(),
                 trainer.getSpecializationText(),
                 trainer.getVisitingAreas(),
-//                trainer.getExperienceYears() != null ? trainer.getExperienceYears() : 0,
-
                 photoDTOs,
                 serviceFeeDTOs,
-
-                specializationNames, // 태그 이름 목록 (리스트 형태)
-                certificationDtoList, // 자격증 DTO 목록
+                specializationNames,
+                certificationDtoList,
                 reviewStatsDTO.averageRating(),
                 reviewStatsDTO.reviewCount()
-
         );
     }
 
