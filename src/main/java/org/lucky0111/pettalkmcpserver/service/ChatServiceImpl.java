@@ -64,10 +64,8 @@ public class ChatServiceImpl implements ChatService {
     private final String postCardTemplate = """
         ---
         ## 🐾 {{게시글_제목}}
-        
-        ### 게시글 3줄 요약
-        {{게시글_내용_3줄 요약}}
-        
+        ### 3줄 요약\\n
+        {{게시글_내용_3줄 요약}}\\n
         👉 [자세히 보기](https://mass-jandy-lucky0111-ed8f3811.koyeb.app/community/post/{{게시글_ID}})
         ---
         """;
