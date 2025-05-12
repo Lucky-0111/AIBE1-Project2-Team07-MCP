@@ -27,6 +27,7 @@ public class Certification extends BaseTimeEntity {
     private String issuingBody;
     private LocalDate issueDate;
     private String fileUrl;
-    private Boolean approved;
+    private Boolean approved = false;
+    private Boolean rejected = false;
 
 }
