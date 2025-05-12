@@ -63,15 +63,14 @@ public class ChatServiceImpl implements ChatService {
     // 게시글 카드 템플릿
     private final String postCardTemplate = """
         ---
+        ## 🐾 {{게시글_제목}}
         
-        ## 📄 {{게시글_제목}}
-        
+        ### 게시글 3줄 요약
         {{게시글_내용_3줄 요약}}
         
-        [게시글 보러가기](https://mass-jandy-lucky0111-ed8f3811.koyeb.app/community/post/{{게시글_ID}})
+        👉 [자세히 보기](https://mass-jandy-lucky0111-ed8f3811.koyeb.app/community/post/{{게시글_ID}})
         ---
         """;
-
     private final String trainerCardTemplate = """
             ---
             
@@ -456,6 +455,7 @@ public class ChatServiceImpl implements ChatService {
     - 게시글 목록이 비어있는 경우 게시글 정보를 임의로 생성하지 마세요
     - 각 게시글은 게시글 템플릿에 따라 표시됩니다
     - 검색된 모든 게시글을 마크다운 형식으로 출력합니다
+    - 게시글 사이는 "---"로 구분합니다.
     - 예시: "
               # {태그} 게시글:\\n
               ---
