@@ -73,7 +73,7 @@ public class TrainerServiceImpl implements TrainerService {
                 trainer.getRepresentativeCareer(),
                 trainer.getSpecializationText(),
                 trainer.getVisitingAreas(),
-                trainer.getExperienceYears() != null ? trainer.getExperienceYears() : 0,
+//                trainer.getExperienceYears() != null ? trainer.getExperienceYears() : 0,
 
                 photoDTOs,
                 serviceFeeDTOs,
