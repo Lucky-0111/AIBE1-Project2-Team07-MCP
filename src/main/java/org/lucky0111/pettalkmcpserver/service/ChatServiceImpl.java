@@ -61,13 +61,17 @@ public class ChatServiceImpl implements ChatService {
     private final int MAX_TRAINERS = 4; // 최대 반환할 훈련사 수를 상수로 정의
     private final int MAX_POSTS = 4; // 최대 반환할 게시글 수를 상수로 정의
 
+    private final String FRONTEND_URL = "https://pet-talk.onrender.com";
+
     // 게시글 카드 템플릿
     private final String postCardTemplate = """
         ---
         ## 🐾 {{게시글_제목}}
         ### 3줄 요약\\n
         {{게시글_내용_3줄 요약}}\\n
-        👉 [자세히 보기](https://mass-jandy-lucky0111-ed8f3811.koyeb.app/community/post/{{게시글_ID}})
+        👉 [자세히 보기](""" + FRONTEND_URL +
+        """
+        /community/post/{{게시글_ID}})
         ---
         """;
     private final String trainerCardTemplate = """
@@ -94,7 +98,9 @@ public class ChatServiceImpl implements ChatService {
             - {{자격증3}} ({{발급기관3}})
             
             ### 👇 문의하기
-            [{{트레이너_이름}} 프로필 페이지](https://mass-jandy-lucky0111-ed8f3811.koyeb.app/trainers/profile/{{트레이너_닉네임}})
+            [{{트레이너_이름}} 프로필 페이지](""" + FRONTEND_URL +
+            """
+            /trainers/profile/{{트레이너_닉네임}})
             ---
             """;
 
