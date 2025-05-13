@@ -191,6 +191,12 @@ public class ChatServiceImpl implements ChatService {
             @ToolParam(description = """
            사용자 요청에서 추출한 태그 목록입니다. 다음과 같은 내용을 태그로 추출하세요:
            
+           ### 매우 중요: 항상 먼저 'getTagsInDB' 도구를 호출하세요
+           - 태그 생성을 시작하기 전에 반드시 먼저 'getTagsInDB' 도구를 호출해야 합니다.
+           - 이 도구는 DB에 저장된 모든 태그 목록을 반환합니다.
+           - 태그 생성은 반드시 이 도구가 반환한 태그 목록에서만 선택해야 합니다.
+           - 다른 어떤 도구도 사용하지 마세요.
+           
            태그 추출 순서:
            1. **DB에 저장된 태그 목록을 요청합니다.** 툴 이름: getTagsInDB
            2. DB에 있는 태그 목록을 기반으로 사용자가 제공한 정보에 맞는 태그를 추출합니다.
@@ -210,6 +216,12 @@ public class ChatServiceImpl implements ChatService {
             List<String> tags,
             @ToolParam(description = """
            사용자 요청에서 추출한 지역 목록입니다. 다음과 같은 지역 정보를 추출하세요:
+           
+           ### 매우 중요: 항상 먼저 'getTrainerAreas' 도구를 호출하세요
+           - 훈련사 지역 생성을 시작하기 전에 반드시 먼저 'getTrainerAreas' 도구를 호출해야 합니다.
+           - 이 도구는 DB에 저장된 모든 훈련사 지역 목록을 반환합니다.
+           - 훈련사 지역 생성은 반드시 이 도구가 반환한 훈련사 지역 목록에서만 선택해야 합니다.
+           - 다른 어떤 도구도 사용하지 마세요.
            
            지역 추출 순서:
            1. **DB에 저장된 훈련사 지역 목록을 요청합니다.** 툴 이름: getTrainerAreas
@@ -473,6 +485,12 @@ public class ChatServiceImpl implements ChatService {
     public List<ChatPostDTO> getPostInfo(
             @ToolParam(description = """
            사용자 요청에서 추출한 태그 목록입니다. 다음과 같은 내용을 태그로 추출하세요:
+           
+           ### 매우 중요: 항상 먼저 'getTagsInDB' 도구를 호출하세요
+           - 태그 생성을 시작하기 전에 반드시 먼저 'getTagsInDB' 도구를 호출해야 합니다.
+           - 이 도구는 DB에 저장된 모든 태그 목록을 반환합니다.
+           - 태그 생성은 반드시 이 도구가 반환한 태그 목록에서만 선택해야 합니다.
+           - 다른 어떤 도구도 사용하지 마세요.
            
            태그 추출 순서:
            1. **DB에 저장된 태그 목록을 요청합니다.**
