@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.lucky0111.pettalkmcpserver.domain.common.UserRole;
 import org.lucky0111.pettalkmcpserver.domain.dto.trainer.TrainerDTO;
 import org.lucky0111.pettalkmcpserver.domain.entity.common.Tag;
 import org.lucky0111.pettalkmcpserver.domain.entity.community.Post;
@@ -195,7 +196,7 @@ public class ChatServiceImpl implements ChatService {
            ### 매우 중요: 항상 먼저 'getTagsInDB' 도구를 호출하세요
            - 태그 생성을 시작하기 전에 반드시 먼저 'getTagsInDB' 도구를 호출해야 합니다.
            - 이 도구는 DB에 저장된 모든 태그 목록을 반환합니다.
-           - 태그 생성은 반드시 이 도구가 반환한 태그 목록에서만 선택해야 합니다.
+           - 태그 추출은 반드시 이 도구가 반환한 태그 목록에서만 선택해야 합니다.
            - 다른 어떤 도구도 사용하지 마세요.
            
            태그 추출 순서:
@@ -221,22 +222,18 @@ public class ChatServiceImpl implements ChatService {
            ### 매우 중요: 항상 먼저 'getTrainerAreas' 도구를 호출하세요
            - 훈련사 지역 생성을 시작하기 전에 반드시 먼저 'getTrainerAreas' 도구를 호출해야 합니다.
            - 이 도구는 DB에 저장된 모든 훈련사 지역 목록을 반환합니다.
-           - 훈련사 지역 생성은 반드시 이 도구가 반환한 훈련사 지역 목록에서만 선택해야 합니다.
+           - **훈련사 지역 추출은 반드시 이 도구가 반환한 훈련사 지역 목록에서만 선택**해야 합니다.
            - 다른 어떤 도구도 사용하지 마세요.
            
            지역 추출 순서:
            1. **DB에 저장된 훈련사 지역 목록을 요청합니다.** 툴 이름: getTrainerAreas
-           2. DB에 있는 훈련사 지역 목록을 기반으로 사용자가 제공한 정보에 맞는 지역를 추출합니다.
+           2. **DB에 있는 훈련사 지역 목록을 기반으로 사용자가 제공한 정보에 맞는 지역를 추출**합니다.
            
            지역은 다양한 범위로 추출할 수 있습니다:
            - 넓은 범위: 서울, 경기, 부산 (광역시, 특별시, 도)
            - 좁은 범위: 강남, 용산, 용인, 수원, 성남 (시, 구)
            
            매우 중요: 사용자가 상위 지역을 언급하면, 해당 지역과 모든 하위 지역을 areas 배열에 함께 포함해야 합니다.
-           예시:
-           - 사용자가 "서울"만 언급했다면: areas = ["서울", "강남", "강동", "강북", "강서", "관악", "광진", "구로", "금천", "노원", "도봉", "동대문", "동작", "마포", "서대문", "서초", "성동", "성북", "송파", "양천", "영등포", "용산", "은평", "종로", "중구", "중랑"]
-           - 사용자가 "경기"만 언급했다면: areas = ["경기", "수원", "성남", "용인", "부천", "안산", "안양", "평택", "시흥", "김포", "경기광주", "광명", "군포", "하남", "오산", "이천", "안성", "의왕", "양평", "여주", "과천", "고양", "의정부", "동두천", "구리", "남양주", "파주", "양주", "포천", "연천", "가평"]
-           - 사용자가 "수도권"만 언급했다면: areas = ["수도권", "서울", "경기", "인천", "강남", "강동", ... DB에 있는 모든 하위 지역 포함]
 
            프로그램에서 따로 지역 확장을 하지 않으므로, 여기서 상위 지역에 대한 DB 내 모든 하위 지역을 직접 포함시켜야 합니다.
            
@@ -358,9 +355,17 @@ public class ChatServiceImpl implements ChatService {
     3. 훈련사 정보가 존재하지 않는 경우 "훈련사 정보를 찾을 수 없습니다."라는 메시지 반환
     4. 훈련사 정보가 존재하는 경우 훈련사 프로필 카드 출력
     
+    - 예시: "
+              ---
+              {훈련사1 프로필 카드}\\n
+              ---
+              {훈련사2 프로필 카드}\\n
+              ---
+            "
+    
     훈련사 프로필 카드 템플릿:
     """ + trainerCardTemplate)
-    public TrainerDTO getTrainerDetailsByName(
+    public List<TrainerDTO> getTrainerDetailsByName(
             @ToolParam (description = """
             훈련사 이름을 입력하세요.
             훈련사 이름은 사용자가 요청한 훈련사 이름입니다.
@@ -371,14 +376,40 @@ public class ChatServiceImpl implements ChatService {
         // 입력값 로깅
         log.info("Received trainer nickname: {}", name);
 
-        // 훈련사 정보 조회
-        String nickname = petUserRepository.findByName(name).getNickname();
-        if (nickname == null) {
-            log.warn("Trainer not found for nickname: {}", name);
-            return null; // 훈련사 정보가 없는 경우 null 반환
+        // name이 훈련사 이름에 포함된 훈련사 정보 PetUser 조회
+        List<PetUser> trainersByName = petUserRepository.findByNameContainingAndRole(name, UserRole.TRAINER);
+        log.info("Found {} trainers by name containing '{}'", trainersByName.size(), name);
+
+        // name이 훈련사 닉네임에 포함된 훈련사 정보 PetUser 조회
+        List<PetUser> trainersByNickname = petUserRepository.findByNicknameContainingAndRole(name, UserRole.TRAINER);
+        log.info("Found {} trainers by nickname containing '{}'", trainersByNickname.size(), name);
+
+        // 두 결과를 합치고 중복 제거
+        Set<PetUser> uniqueTrainers = new HashSet<>();
+        uniqueTrainers.addAll(trainersByName);
+        uniqueTrainers.addAll(trainersByNickname);
+
+        // 결과 처리
+        List<TrainerDTO> trainerDTOs = new ArrayList<>();
+        if (uniqueTrainers.isEmpty()) {
+            log.warn("No trainers found for name or nickname containing: {}", name);
+            return Collections.emptyList(); // 빈 리스트 반환
         }
 
-        return trainerService.getTrainerDetails(nickname);
+        // 각 훈련사 정보로 TrainerDTO 생성
+        for (PetUser petUser : uniqueTrainers) {
+            try {
+                TrainerDTO trainerDTO = trainerService.getTrainerDetails(petUser.getNickname());
+                if (trainerDTO != null) {
+                    trainerDTOs.add(trainerDTO);
+                    log.info("Added trainer with nickname: {}", petUser.getNickname());
+                }
+            } catch (Exception e) {
+                log.error("Error getting trainer details for nickname {}: {}", petUser.getNickname(), e.getMessage());
+            }
+        }
+
+        return trainerDTOs;
     }
 
     @Tool(name = "getTrainerAreas", description = """
