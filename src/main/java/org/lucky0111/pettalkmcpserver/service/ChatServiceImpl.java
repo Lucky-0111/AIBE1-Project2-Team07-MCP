@@ -82,7 +82,7 @@ public class ChatServiceImpl implements ChatService {
             ### **평점**: ⭐{{평점}} ({{리뷰_수}}개의 리뷰)
             
             ### 소개
-            {{소개_내용}}
+            {{소개_내용 3줄 요약}}
             
             ### 대표 경력
             {{대표_경력_내용}}
@@ -182,6 +182,7 @@ public class ChatServiceImpl implements ChatService {
     - **매우 중요: 훈련사 정보는 오직 TrainerResponseDTO.trainers에 포함된 실제 데이터만 사용하세요. 임의로 정보를 생성하거나 바꾸지 마세요.**
     - TrainerResponseDTO의 trainers에 TrainerDTO가 존재하는 경우에만 해당 TrainerDTO의 정보로 훈련사 프로필 카드 출력
     - 항목이 비어있는 경우 해당 항목은 출력하지 않음 (예시: None 일 경우 출력하지 않음)
+    - 출력되는 형태는 훈련사 프로필 카드 템플릿을 따르고 소개 내용은 **3줄 요약**합니다.
     - 매우 중요: 훈련사 정보는 오직 TrainerResponseDTO.trainers에 포함된 실제 데이터만 사용하세요. 임의로 정보를 생성하거나 바꾸지 마세요. TrainerResponseDTO의 trainers에 TrainerDTO가 존재하는 경우에만 해당 TrainerDTO의 정보로 훈련사 프로필 카드를 출력하세요. TrainerResponseDTO의 trainers가 비어있는 경우 훈련사 프로필 카드를 생성하지 마세요. 대신 "죄송합니다. 요청하신 조건에 맞는 훈련사를 찾을 수 없습니다."라고 안내하세요.
     이 지침을 정확히 따라 사용자 요청 조건과 검색 결과를 명확하게 설명하세요.
     
